@@ -1,0 +1,436 @@
+---
+title: "COVID-19 Impact on Seattle Property Values"
+author: "Justin Gao"
+format: 
+  revealjs:
+    embed-resources: true
+    theme: default
+    slide-number: true
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+
+house_prices <- read_csv("seattle_house_prices.csv", show_col_types = FALSE)
+building_permits <- read_csv("seattle_building_permits.csv", show_col_types = FALSE)
+```
+
+## Introduction
+
+**Justin Gao**
+
+INFO 201
+
+Section AD
+
+Unfortunately it is just me working on this project by myself. I believe my partner dropped the class
+
+# Research Question
+
+---
+
+## Big Picture Question
+
+**How did the COVID-19 pandemic affect residential property values and development activity in Seattle?**
+
+<br>
+
+**Sub-questions:**
+
+1. Did house prices increase or decrease during COVID?
+2. How did price growth rates change?
+3. Did construction activity slow down?
+4. Were single-family and multifamily housing affected differently?
+
+# Background
+
+---
+
+## Previous Research
+
+**Source:** Francke, M. & Korevaar, M. (2021). "Housing markets in a pandemic: Evidence from historical outbreaks." *Journal of Urban Economics*
+
+<br>
+
+**Important takeaways:**
+
+- Historical pandemics showed temporary price declines
+- Low interest rates during COVID created unique conditions
+- Remote work increased demand for housing space
+
+
+
+**Why this matters:** Helps us understand if Seattle followed historical patterns
+
+# Data
+
+---
+
+## Dataset 1: House Prices
+
+**Source:** Federal Housing Finance Agency via FRED
+
+**Link:** https://fred.stlouisfed.org/series/ATNHPIUS42644Q
+
+
+
+
+**Sample:** 31 quarterly observations, Q1 2018 - Q3 2025
+
+**What it measures:** House price index for Seattle metro area
+
+**Population:** Residential properties with conforming mortgages
+
+**Who created it:** U.S. Federal Housing Finance Agency
+
+---
+
+## Dataset 2: Building Permits
+
+**Source:** City of Seattle Open Data Portal
+
+**Link:** https://data.seattle.gov/Built-Environment/Building-Permits/76t5-zqzr
+
+
+
+
+**Sample:** 34 permits from 2018-2024
+
+**What it measures:** Construction permits with its type, cost, housing units
+
+**Population:** All the construction projects requiring permits in Seattle
+
+**Who created it:** Seattle Department of Construction & Inspections
+
+# Data Wrangling
+
+---
+
+## Steps Taken
+
+**1. Date Processing (Novel Tool)**
+
+Used ymd(), year(), quarter() to work with dates
+
+
+
+**2. COVID Period Classification (Basic: mutate)**
+
+Created Pre-COVID, During COVID, Post-COVID periods
+
+
+
+**3. Summary Statistics (Basic: group_by + summarise)**
+
+Calculated averages by period
+
+
+
+**4. Joining Datasets (Intermediate)**
+
+Combined house prices and permits by time period
+
+---
+
+## Date Tool Example
+
+```{r}
+#| echo: true
+#| eval: false
+
+house_prices <- house_prices %>%
+  mutate(
+    DATE = ymd(DATE),
+    Year = year(DATE),
+    Quarter = quarter(DATE),
+    COVID_Period = case_when(
+      Year < 2020 ~ "Pre-COVID",
+      Year >= 2020 & Year <= 2021 ~ "During COVID",
+      TRUE ~ "Post-COVID"
+    )
+  )
+```
+
+**Why needed:** Can't do time analysis without proper dates
+
+**Resource:** https://r4ds.had.co.nz/dates-and-times.html
+
+# Analysis
+
+---
+
+## Question 1: Price Trends
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5
+
+
+house_prices_clean <- house_prices %>%
+  mutate(
+    DATE = ymd(DATE),
+    Year = year(DATE),
+    COVID_Period = case_when(
+      Year < 2020 ~ "Pre-COVID",
+      Year >= 2020 & Year <= 2021 ~ "During COVID",
+      TRUE ~ "Post-COVID"
+    ),
+    COVID_Period = factor(COVID_Period, levels = c("Pre-COVID", "During COVID", "Post-COVID"))
+  )
+
+
+
+ggplot(house_prices_clean, aes(x = DATE, y = ATNHPIUS42644Q, color = COVID_Period)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2.5) +
+  labs(title = "Seattle House Price Index Over Time",
+       x = "Date",
+       y = "Price Index",
+       color = "Period") +
+  theme_minimal() +
+  scale_color_manual(values = c("Pre-COVID" = "blue", 
+                                  "During COVID" = "orange", 
+                                  "Post-COVID" = "green"))
+```
+
+**Finding:** 
+
+- From 2020 to 2021, price jumped from 452 to 549, but from 2018 to 2019, price had a steady growth from 408 to 448
+
+- Prices jumped 21% during COVID vs 10% growth before
+
+---
+
+## Question 2: Growth Rates
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5
+
+house_prices_growth <- house_prices_clean %>%
+  arrange(DATE) %>%
+  mutate(Growth_Rate = (ATNHPIUS42644Q - lag(ATNHPIUS42644Q)) / lag(ATNHPIUS42644Q) * 100) %>%
+  filter(!is.na(Growth_Rate))
+
+ggplot(house_prices_growth, aes(x = COVID_Period, y = Growth_Rate, fill = COVID_Period)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter() +
+  labs(title = "Quarterly Growth Rates by Period",
+       x = "Period",
+       y = "Growth Rate (%)") +
+  theme_minimal(base_size = 14) +
+  scale_fill_manual(values = c("Pre-COVID" = "blue", 
+                                "During COVID" = "orange", 
+                                "Post-COVID" = "green")) 
+```
+
+**Finding:** During COVID had highest growth (3.5% per quarter)
+
+---
+
+## Question 3: Development Activity
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5
+
+
+building_permits_final <- building_permits %>%
+  mutate(
+    AppliedDate = ymd(AppliedDate),
+    AppliedYear = year(AppliedDate),
+    COVID_Period = case_when(
+      AppliedYear < 2020 ~ "Pre-COVID",
+      AppliedYear >= 2020 & AppliedYear <= 2021 ~ "During COVID",
+      TRUE ~ "Post-COVID"
+    ),
+    COVID_Period = factor(COVID_Period, levels = c("Pre-COVID", "During COVID", "Post-COVID"))
+  )
+
+
+
+
+permit_summary <- building_permits_final %>%
+  group_by(COVID_Period, PermitClass) %>%
+  summarise(Count = n(), .groups = 'drop')
+
+
+
+
+
+ggplot(permit_summary, aes(x = COVID_Period, y = Count, fill = PermitClass)) +
+  geom_col(position = "dodge") +
+  labs(title = "Building Permits by Type and Period",
+       x = "Period",
+       y = "Number of Permits",
+       fill = "Type") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2") +
+  geom_text(aes(label = Count), position = position_dodge(width = 0.9), vjust = -0.5, size = 4)
+```
+
+**Finding:** Development mostly stayed stable during COVID and then increased after
+
+---
+
+## Question 4: Housing Types
+
+```{r}
+#| echo: false
+#| warning: false
+#| fig-width: 10
+#| fig-height: 5
+
+cost_summary <- building_permits_final %>%
+  filter(PermitClass != "Commercial") %>%
+  group_by(COVID_Period, PermitClass) %>%
+  summarise(Avg_Cost = mean(EstProjectCost, na.rm = TRUE), .groups = 'drop')
+
+ggplot(cost_summary, aes(x = COVID_Period, y = Avg_Cost/1000000, fill = PermitClass)) +
+  geom_col(position = "dodge") +
+  labs(title = "Average Project Costs by Housing Type",
+       x = "Period",
+       y = "Cost (Millions $)",
+       fill = "Type") +
+  theme_minimal(base_size = 14) +
+  scale_fill_manual(values = c("Single Family / Duplex" = "steelblue", 
+                                "Multifamily" = "coral")) +
+  geom_text(aes(label = paste0("$", round(Avg_Cost/1000000, 1), "M")), 
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 4)
+```
+
+**Finding:** Both increased, but multifamily dropped during COVID then surged
+
+# Advanced Analysis
+
+---
+
+## Joining Datasets (Intermediate Tool)
+
+```{r}
+#| echo: true
+
+price_by_period <- house_prices_clean %>%
+  group_by(COVID_Period) %>%
+  summarise(Avg_Price_Index = mean(ATNHPIUS42644Q), .groups = 'drop')
+
+permits_by_period <- building_permits_final %>%
+  group_by(COVID_Period) %>%
+  summarise(Total_Permits = n(), .groups = 'drop')
+
+combined <- price_by_period %>%
+  inner_join(permits_by_period, by = "COVID_Period")
+```
+
+**Why needed:** I need to do this to see relationships between prices and building
+
+**Alternative:** You could analyze separately, but joining still shows connections
+
+**Resource:** https://r4ds.had.co.nz/relational-data.html
+
+---
+
+## Price vs Development Relationship
+
+```{r}
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+ggplot(combined, aes(x = Avg_Price_Index, y = Total_Permits, color = COVID_Period)) +
+  geom_point(size = 7) +
+  geom_text(aes(label = COVID_Period), vjust = -1.2, size = 4) +
+  labs(title = "House Prices vs Building Permits",
+       x = "Average Price Index",
+       y = "Total Permits") +
+  theme_minimal(base_size = 14) +
+  scale_color_manual(values = c("Pre-COVID" = "blue", 
+                                  "During COVID" = "orange", 
+                                  "Post-COVID" = "green")) +
+  theme(legend.position = "none")
+```
+
+**Finding:** High prices during COVID didn't immediately increase building
+
+# Conclusions
+
+---
+
+## Main Findings
+
+**COVID drastically increased housing prices:**
+
+
+
+
+1. Prices jumped about 21% during pandemic (2020-2021)
+
+2. Quarterly growth rates were the highest during COVID
+
+3. Construction stayed steady, and continued to increase post-COVID
+
+4. Single-family costs rose steadily, however the multifamily costs were volatile
+
+5. High prices didn't immediately lead to more building
+
+
+
+---
+
+## Limitations
+
+**What we couldn't address:**
+
+
+1. Small sample size (cuz only 34 permits)
+
+2. Permits are Seattle-only and prices are metro-wide
+
+3. No data on interest rates or employment
+
+4. Can't prove causation only patterns
+
+5. Missing neighborhood-level details
+
+
+
+**Future work:** Add economic data, compare other cities, study neighborhoods
+
+# Summary
+
+---
+
+## Tools & Data Used
+
+**Data Sources:**
+
+- House prices: https://fred.stlouisfed.org/series/ATNHPIUS42644Q
+- Building permits: https://data.seattle.gov/Built-Environment/Building-Permits/76t5-zqzr
+
+<br>
+
+**Basic Tools:** mutate, filter, group_by, summarise, arrange
+
+**Intermediate Tool:** inner_join
+
+**Novel Tool:** Date functions (ymd, year, quarter)
+
+
+
+
+**Visualizations:** Line graph, box plot, grouped bar chart
+
+---
+
+# Thank You
+
+**By: Justin Gao** 
